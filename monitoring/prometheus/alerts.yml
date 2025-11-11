@@ -1,0 +1,222 @@
+groups:
+  - name: circuit_ai_api
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # High latency
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API latency"
+          description: "95th percentile latency is {{ $value }}s (threshold: 2s)"
+
+      # Analysis failures
+      - alert: HighAnalysisFailureRate
+        expr: |
+          rate(analysis_failures_total[5m]) / rate(analysis_total[5m]) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          component: analyzer
+        annotations:
+          summary: "High analysis failure rate"
+          description: "Analysis failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # Model loading failures
+      - alert: ModelLoadingFailed
+        expr: |
+          model_load_failures_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: ml
+        annotations:
+          summary: "ML model loading failed"
+          description: "YOLO model failed to load"
+
+      # Circuit breaker opened
+      - alert: CircuitBreakerOpen
+        expr: |
+          circuit_breaker_state{state="open"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: reliability
+        annotations:
+          summary: "Circuit breaker {{ $labels.name }} is open"
+          description: "Circuit breaker for {{ $labels.name }} has been open for 5 minutes"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          process_resident_memory_bytes / 1024 / 1024 / 1024 > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB (threshold: 2GB)"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total[1m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanizePercentage }}"
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Low disk space"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      # Redis connection failure
+      - alert: RedisConnectionFailed
+        expr: |
+          redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis connection failed"
+          description: "Cannot connect to Redis cache"
+
+      # Database connection failure
+      - alert: DatabaseConnectionFailed
+        expr: |
+          database_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection failed"
+          description: "Cannot connect to database"
+
+      # Rate limiting triggered frequently
+      - alert: HighRateLimitingRate
+        expr: |
+          rate(rate_limit_exceeded_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: info
+          component: security
+        annotations:
+          summary: "High rate of rate limiting"
+          description: "{{ $value }} requests/s being rate limited"
+
+      # Unusual traffic spike
+      - alert: TrafficSpike
+        expr: |
+          rate(http_requests_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+          component: api
+        annotations:
+          summary: "Unusual traffic spike"
+          description: "Request rate is {{ $value }} req/s (normal: <100)"
+
+      # API endpoint down
+      - alert: APIEndpointDown
+        expr: |
+          up{job="circuit-ai-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API endpoint is down"
+          description: "API endpoint {{ $labels.instance }} is unreachable"
+
+      # WebSocket connection issues
+      - alert: WebSocketConnectionIssues
+        expr: |
+          rate(websocket_connection_errors_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "WebSocket connection issues"
+          description: "{{ $value }} WebSocket errors/s"
+
+      # Queue backlog growing
+      - alert: QueueBacklogGrowing
+        expr: |
+          queue_depth > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "Queue backlog growing"
+          description: "Queue depth is {{ $value }} (threshold: 100)"
+
+      # Cache hit rate low
+      - alert: LowCacheHitRate
+        expr: |
+          rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (expected: >50%)"
+
+  - name: circuit_ai_business
+    interval: 1m
+    rules:
+      # Low analysis volume (business metric)
+      - alert: LowAnalysisVolume
+        expr: |
+          rate(analysis_total[1h]) < 1
+        for: 2h
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Low analysis volume"
+          description: "Only {{ $value }} analyses/hour (expected: >1)"
+
+      # High user churn
+      - alert: HighUserChurn
+        expr: |
+          rate(user_churn_total[24h]) > 5
+        for: 1h
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "High user churn detected"
+          description: "{{ $value }} users churned in last 24h"
