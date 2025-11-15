@@ -28,6 +28,9 @@ from .billing_workflow import billing_workflow, SubscriptionWorkflow
 from .batch_processing_workflow import batch_processing_workflow, BatchProcessingWorkflow
 from .content_generation_workflow import content_generation_workflow, ContentGenerationWorkflow
 from .notification_workflow import notification_workflow, NotificationWorkflow, NotificationChannel, NotificationPriority
+from .three_d_generation_workflow import three_d_generation_workflow, ThreeDGenerationWorkflow, DesignType, DesignMethod
+from .circuit_generation_workflow import circuit_generation_workflow, CircuitGenerationWorkflow, CircuitCategory
+from .fabricator_workflow import fabricator_workflow, FabricatorWorkflow, DeviceType, ManufacturingMethod
 
 
 class WorkflowType(Enum):
@@ -43,6 +46,10 @@ class WorkflowType(Enum):
     TUTORIAL = "tutorial"
     NOTIFICATION = "notification"
     WEBHOOK = "webhook"
+    THREE_D_GENERATION = "3d_generation"
+    ENCLOSURE_GENERATION = "enclosure_generation"
+    CIRCUIT_GENERATION = "circuit_generation"
+    DEVICE_FABRICATION = "device_fabrication"
 
 
 @dataclass
@@ -71,6 +78,9 @@ class WorkflowManager:
         self.batch_workflow = batch_processing_workflow
         self.content_workflow = content_generation_workflow
         self.notification_workflow = notification_workflow
+        self.three_d_workflow = three_d_generation_workflow
+        self.circuit_workflow = circuit_generation_workflow
+        self.fabricator_workflow = fabricator_workflow
 
         # Execution tracking
         self.executions: Dict[str, WorkflowExecution] = {}
@@ -80,7 +90,7 @@ class WorkflowManager:
         self.successful_executions = 0
         self.failed_executions = 0
 
-        logger.info("WorkflowManager initialized")
+        logger.info("WorkflowManager initialized with all workflows including Fabricator")
 
     # PCB Analysis Workflows
     async def analyze_pcb(
@@ -470,6 +480,165 @@ class WorkflowManager:
         )
 
         logger.info(f"Started webhook delivery: {execution_id}")
+
+        return execution_id
+
+    # Fabricator Workflows
+    async def generate_3d_model(
+        self,
+        user_id: str,
+        prompt: str,
+        design_type: DesignType = DesignType.CUSTOM,
+        method: Optional[DesignMethod] = None
+    ) -> str:
+        """
+        Generate 3D printable model from prompt.
+
+        Args:
+            user_id: User ID
+            prompt: Text description of design
+            design_type: Type of design
+            method: Generation method (auto-selected if None)
+
+        Returns:
+            Execution ID
+        """
+        execution_id = await self.three_d_workflow.generate_3d_model(
+            user_id,
+            prompt,
+            design_type,
+            method
+        )
+
+        self._track_execution(
+            execution_id,
+            WorkflowType.THREE_D_GENERATION,
+            user_id,
+            {'prompt': prompt, 'design_type': design_type.value}
+        )
+
+        logger.info(f"Started 3D model generation: {execution_id}")
+
+        return execution_id
+
+    async def generate_enclosure(
+        self,
+        user_id: str,
+        pcb_dimensions: Dict[str, float],
+        component_heights: Dict[str, float],
+        connectors: List[Dict[str, Any]],
+        style: str = "minimalist"
+    ) -> str:
+        """
+        Generate electronics enclosure for PCB.
+
+        Args:
+            user_id: User ID
+            pcb_dimensions: PCB width, height, thickness
+            component_heights: Max component heights
+            connectors: List of connectors with positions
+            style: Enclosure style
+
+        Returns:
+            Execution ID
+        """
+        execution_id = await self.three_d_workflow.generate_enclosure(
+            user_id,
+            pcb_dimensions,
+            component_heights,
+            connectors,
+            style
+        )
+
+        self._track_execution(
+            execution_id,
+            WorkflowType.ENCLOSURE_GENERATION,
+            user_id,
+            {'pcb_dimensions': pcb_dimensions, 'style': style}
+        )
+
+        logger.info(f"Started enclosure generation: {execution_id}")
+
+        return execution_id
+
+    async def generate_circuit(
+        self,
+        user_id: str,
+        prompt: str,
+        category: Optional[CircuitCategory] = None,
+        run_simulation: bool = True
+    ) -> str:
+        """
+        Generate circuit design from prompt.
+
+        Args:
+            user_id: User ID
+            prompt: Text description of circuit
+            category: Circuit category
+            run_simulation: Whether to run SPICE simulation
+
+        Returns:
+            Execution ID
+        """
+        execution_id = await self.circuit_workflow.generate_circuit(
+            user_id,
+            prompt,
+            category,
+            run_simulation=run_simulation
+        )
+
+        self._track_execution(
+            execution_id,
+            WorkflowType.CIRCUIT_GENERATION,
+            user_id,
+            {'prompt': prompt, 'category': category.value if category else None}
+        )
+
+        logger.info(f"Started circuit generation: {execution_id}")
+
+        return execution_id
+
+    async def fabricate_device(
+        self,
+        user_id: str,
+        prompt: str,
+        device_type: Optional[DeviceType] = None,
+        manufacturing_method: ManufacturingMethod = ManufacturingMethod.PROTOTYPE
+    ) -> str:
+        """
+        Generate complete fabrication package for device.
+
+        This is the "complete fabricator" - combines circuit design
+        and 3D enclosure generation into a single manufacturing package.
+
+        Args:
+            user_id: User ID
+            prompt: Text description of complete device
+            device_type: Type of device
+            manufacturing_method: Target manufacturing method
+
+        Returns:
+            Execution ID
+        """
+        execution_id = await self.fabricator_workflow.fabricate_device(
+            user_id,
+            prompt,
+            device_type,
+            manufacturing_method
+        )
+
+        self._track_execution(
+            execution_id,
+            WorkflowType.DEVICE_FABRICATION,
+            user_id,
+            {
+                'prompt': prompt,
+                'device_type': device_type.value if device_type else None,
+                'manufacturing_method': manufacturing_method.value
+            }
+        )
+
+        logger.info(f"Started device fabrication: {execution_id}")
 
         return execution_id
 
