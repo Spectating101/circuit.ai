@@ -27,6 +27,21 @@ from .pcb_analysis_workflow import (
     Workflow, WorkflowEngine, WorkflowStatus, WorkflowStep
 )
 
+# Import actual working implementations
+try:
+    from src.fabricator import (
+        Parametric3DGenerator,
+        EnclosureSpec,
+        generate_electronics_enclosure,
+        CADQUERY_AVAILABLE
+    )
+    FABRICATOR_AVAILABLE = CADQUERY_AVAILABLE
+except ImportError:
+    FABRICATOR_AVAILABLE = False
+    Parametric3DGenerator = None
+    EnclosureSpec = None
+    generate_electronics_enclosure = None
+
 
 class DesignMethod(Enum):
     """3D design generation methods."""
@@ -637,18 +652,55 @@ class ThreeDGenerationWorkflow:
         standoffs = context['plan_mounting']['standoffs']
         cutouts = context['plan_openings']['cutouts']
 
-        # Would generate base using CadQuery/OpenSCAD
+        if FABRICATOR_AVAILABLE and Parametric3DGenerator:
+            # Use actual CadQuery generator
+            try:
+                spec = EnclosureSpec(
+                    internal_width=dims['internal_width'],
+                    internal_height=dims['internal_height'],
+                    internal_depth=dims['internal_depth'],
+                    wall_thickness=dims['wall_thickness'],
+                    pcb_standoff_height=standoffs[0]['height'],
+                    mounting_holes=[
+                        {'x': s['x'], 'y': s['y']} for s in standoffs
+                    ],
+                    connector_cutouts=cutouts,
+                    ventilation=True,
+                    style='minimalist'
+                )
 
+                generator = Parametric3DGenerator()
+                result = generator.generate_enclosure(
+                    spec,
+                    '/tmp/enclosure_base.stl',
+                    '/tmp/enclosure_lid.stl'
+                )
+
+                logger.info("Generated enclosure using CadQuery")
+
+                return {
+                    'base_model': result['base_stl'],
+                    'lid_model': result['lid_stl'],
+                    'volume_cm3': result['volume_cm3'],
+                    'material_grams': result['estimated_material_grams'],
+                    'print_time_hours': result['estimated_print_time_hours']
+                }
+            except Exception as e:
+                logger.warning(f"CadQuery generation failed: {e}, using stub")
+
+        # Fallback to stub
         return {
-            'base_model': '/tmp/enclosure_base.stl'
+            'base_model': '/tmp/enclosure_base.stl',
+            'lid_model': '/tmp/enclosure_lid.stl'
         }
 
     async def _generate_lid(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate enclosure lid."""
-        dims = context['calculate_dimensions']
+        # Lid is generated together with base
+        if 'lid_model' in context.get('generate_base', {}):
+            return context['generate_base']
 
-        # Would generate lid
-
+        # Fallback
         return {
             'lid_model': '/tmp/enclosure_lid.stl'
         }

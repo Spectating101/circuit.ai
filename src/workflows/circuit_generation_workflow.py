@@ -27,6 +27,18 @@ from .pcb_analysis_workflow import (
     Workflow, WorkflowEngine, WorkflowStatus, WorkflowStep
 )
 
+# Import actual working implementations
+try:
+    from src.fabricator import (
+        component_selector,
+        circuit_validator,
+        CircuitRequirements,
+        Component
+    )
+    FABRICATOR_AVAILABLE = True
+except ImportError:
+    FABRICATOR_AVAILABLE = False
+
 
 class CircuitComplexity(Enum):
     """Circuit complexity levels."""
@@ -391,44 +403,81 @@ class CircuitGenerationWorkflow:
         """Select appropriate components."""
         requirements = context['parse_requirements']
 
-        # Would query component database
-        # Use AI to recommend optimal components
+        components = []
 
-        components = [
-            {
-                'type': 'voltage_regulator',
-                'part_number': 'LM7805',
-                'manufacturer': 'Texas Instruments',
-                'specs': {'v_in_max': 35, 'v_out': 5.0, 'i_max': 1.5}
-            },
-            {
-                'type': 'capacitor',
-                'value': '100uF',
-                'voltage_rating': 25,
-                'quantity': 2
-            },
-            {
-                'type': 'capacitor',
-                'value': '0.1uF',
-                'voltage_rating': 16,
-                'quantity': 1
-            }
-        ]
+        if FABRICATOR_AVAILABLE:
+            # Use actual component selector
+            v_in = requirements.get('input_voltage')
+            v_out = requirements.get('output_voltage')
+            i_out = requirements.get('current_rating')
 
-        logger.info(f"Selected {len(components)} components")
+            if v_in and v_out and i_out:
+                # Select power supply components
+                power_components = component_selector.select_power_supply_components(
+                    v_in, v_out, i_out
+                )
+                components.extend(power_components)
+
+            # If WiFi/Bluetooth needed, select microcontroller
+            if 'wifi' in requirements.get('features', []) or 'bluetooth' in requirements.get('features', []):
+                mcu_req = {
+                    'wifi': 'wifi' in requirements.get('features', []),
+                    'bluetooth': 'bluetooth' in requirements.get('features', []),
+                }
+                mcu_components = component_selector.select_microcontroller_system(mcu_req)
+                components.extend(mcu_components)
+
+            logger.info(f"Selected {len(components)} components using fabricator")
+        else:
+            # Fallback to stub data
+            components = [
+                {
+                    'type': 'voltage_regulator',
+                    'part_number': 'LM7805',
+                    'manufacturer': 'Texas Instruments',
+                    'specs': {'v_in_max': 35, 'v_out': 5.0, 'i_max': 1.5}
+                },
+                {
+                    'type': 'capacitor',
+                    'value': '100uF',
+                    'voltage_rating': 25,
+                    'quantity': 2
+                },
+            ]
+
+            logger.info(f"Selected {len(components)} components (stub)")
 
         return {'components': components}
 
     async def _validate_compatibility(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Validate component compatibility."""
         components = context['select_components']['components']
-
-        # Check voltage ratings
-        # Check current capabilities
-        # Check footprint compatibility
+        requirements = context['parse_requirements']
 
         compatible = True
         issues = []
+
+        if FABRICATOR_AVAILABLE:
+            # Use actual validator
+            v_in = requirements.get('input_voltage')
+            v_out = requirements.get('output_voltage')
+            i_out = requirements.get('current_rating')
+
+            # Find regulator in components
+            for comp in components:
+                if hasattr(comp, 'category') and 'POWER' in str(comp.category):
+                    # Validate power supply design
+                    valid, validation_issues = circuit_validator.validate_power_supply(
+                        v_in, v_out, i_out, comp
+                    )
+                    if not valid:
+                        compatible = False
+                        issues.extend(validation_issues)
+                    break
+
+            logger.info(f"Validated components: {compatible}, {len(issues)} issues")
+        else:
+            logger.info("Component validation (stub)")
 
         return {
             'compatible': compatible,
